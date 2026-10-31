@@ -1,0 +1,11 @@
+{
+  "name": "ことば Translator",
+  "description": "DeepL・OpenAI・DeepSeek・Gemini・OpenRouter・カスタムエンドポイント対応。自動翻訳・モデル一覧取得・API 切替",
+  "authors": [
+    {
+      "name": "porari"
+    }
+  ],
+  "main": "index.js",
+  "hash": "6066f80ebca21e781ef128d5a91cbb11a359bc359d6169fb205cbb03c4177ff7"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "kettu-plugins",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "setup": "npm --prefix kotoba-translator ci",
+    "build": "npm --prefix kotoba-translator run build && npm --prefix clean-social-links run build",
+    "check": "npm --prefix kotoba-translator run check && npm --prefix clean-social-links run check"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "OSL-3.0"
+}

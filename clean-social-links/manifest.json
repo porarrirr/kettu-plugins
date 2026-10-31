@@ -1,0 +1,11 @@
+{
+  "name": "Clean Social Links",
+  "description": "Instagram・X のリンクを開くとき／送信するときに ? 以降を自動削除",
+  "authors": [
+    {
+      "name": "porari"
+    }
+  ],
+  "main": "index.js",
+  "hash": "d30063da9a5629aaaf2bce826731d7ae58d0d9179b060f0c082e7ee64fabeb41"
+}

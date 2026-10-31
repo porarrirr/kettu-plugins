@@ -1,0 +1,14 @@
+{
+  "name": "kettu-clean-social-links",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.cjs",
+    "test": "node --test test/*.test.cjs",
+    "check": "npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "OSL-3.0"
+}

@@ -1,0 +1,22 @@
+name: Check plugins
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: kotoba-translator/package-lock.json
+      - run: npm run setup
+      - run: npm run check
+      - name: Verify generated files are current
+        run: git diff --exit-code -- kotoba-translator/index.js kotoba-translator/manifest.json clean-social-links/index.js clean-social-links/manifest.json
