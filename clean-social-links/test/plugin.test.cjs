@@ -25,8 +25,17 @@ function environment(options = {}) {
     const native = { openURL: (...args) => calls.push(args) };
     const urlTaps = options.splitTaps ? { handleMessagesTapURLLink: taps.handleMessagesTapURLLink } : taps;
     const linkTaps = options.splitTaps ? { handleMessagesTapLink: taps.handleMessagesTapLink } : taps;
+    let settingState;
+    const React = {
+        createElement: (type, props, ...children) => ({ type, props, children }),
+        useState: value => {
+            if (settingState === undefined) settingState = value;
+            return [settingState, next => { settingState = next; }];
+        }
+    };
     const vendetta = {
-        metro: { common: { ReactNative: { Linking: native }, url: options.commonAlias ? urls : commonUrls }, findByProps: (...props) => {
+        plugin: { storage: options.storage || {} },
+        metro: { common: { React, ReactNative: { View: "View", Text: "Text", Switch: "Switch", ScrollView: "ScrollView", useColorScheme: () => "light", Linking: native }, url: options.commonAlias ? urls : commonUrls }, findByProps: (...props) => {
             const modules = [messages, urls, clicks, urlTaps];
             if (options.splitTaps) modules.push(linkTaps);
             return modules.find(module => props.every(prop => typeof module[prop] === 'function'));
@@ -66,6 +75,7 @@ test('missing or throwing internal modules do not crash', () => {
     const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
     for (const vendetta of [{}, { patcher: { before() {} }, metro: { findByProps() { throw Error('unavailable'); } } }]) {
         const plugin = vm.runInNewContext('(' + source + ')', { vendetta });
+        assert.equal(plugin.settings(), null);
         plugin.onLoad(); plugin.onUnload();
     }
 });
@@ -135,5 +145,113 @@ test('getter-backed link payload reaches the original click handler', () => {
     assert.equal(e.clicks.handleClick(original), 'clicked');
     assert.equal(e.calls[0][0].href, 'https://x.com/post');
     assert.equal(original.href, 'https://x.com/post?tracking=1');
+    e.plugin.onUnload();
+});
+
+
+test('Amazon regional and short URLs are cleaned with exact host boundaries', () => {
+    const domains = ['amazon.co.jp', 'amazon.com', 'amazon.co.uk', 'amazon.de', 'amazon.fr', 'amazon.it', 'amazon.es', 'amazon.ca', 'amazon.com.au', 'amazon.in', 'amazon.com.br', 'amazon.com.mx', 'amazon.nl', 'amazon.se', 'amazon.pl', 'amazon.com.be', 'amazon.ie', 'amazon.com.tr', 'amazon.ae', 'amazon.sa', 'amazon.sg', 'amazon.eg', 'amazon.co.za', 'amazon.cn', 'amzn.asia', 'amzn.to'];
+    for (const domain of domains) {
+        for (const host of [domain, 'www.' + domain, domain.toUpperCase()]) {
+            assert.equal(core.cleanUrl(`https://${host}/dp/B012345678?tag=test&ref_=share#part`), `https://${host}/dp/B012345678`);
+        }
+    }
+    assert.equal(core.cleanUrl('http://www.amazon.co.jp:80/dp/B012345678?tag=test'), 'http://www.amazon.co.jp:80/dp/B012345678');
+    for (const url of ['https://amazon.co.jp.evil.test/dp/id?tag=test', 'https://amazon.com@evil.test/?tag=test', 'https://notamazon.com/?tag=test', 'https://amazon.evil/?tag=test', 'https://amzn.to.evil.test/?tag=test', 'https://amzn.asia@evil.test/?tag=test', 'ftp://amazon.co.jp/dp/id?tag=test', 'https://amazon.co.jp/dp/id#part?keep=1', 'https://amzn.asia/d/abc', 'https://example.com/?amazon=1']) {
+        assert.equal(core.cleanUrl(url), url);
+    }
+    assert.equal(core.cleanText('商品 [Amazon](https://www.amazon.co.jp/dp/B012345678?tag=test)。 <https://amzn.asia/d/abc?share=1> https://amzn.to/abc?tag=test! https://example.com/?keep=1'), '商品 [Amazon](https://www.amazon.co.jp/dp/B012345678)。 <https://amzn.asia/d/abc> https://amzn.to/abc! https://example.com/?keep=1');
+});
+
+test('Amazon links are cleaned on send and open and restored on unload', () => {
+    const e = environment(); e.plugin.onLoad();
+    const payload = Object.freeze({ content: 'https://www.amazon.co.jp/dp/B012345678?tag=test https://amzn.asia/d/abc?share=1' });
+    assert.equal(e.messages.sendMessage('channel', payload), 'sent');
+    assert.equal(e.calls[0][1].content, 'https://www.amazon.co.jp/dp/B012345678 https://amzn.asia/d/abc');
+    assert.equal(payload.content, 'https://www.amazon.co.jp/dp/B012345678?tag=test https://amzn.asia/d/abc?share=1');
+    const link = Object.freeze({ href: 'https://amazon.com/dp/B012345678?tag=test' });
+    e.clicks.handleClick(link);
+    assert.equal(e.calls[1][0].href, 'https://amazon.com/dp/B012345678');
+    const event = Object.freeze({ nativeEvent: Object.freeze({ url: 'https://amzn.to/abc?tag=test' }) });
+    e.taps.handleMessagesTapURLLink(event);
+    assert.equal(e.calls[2][0].nativeEvent.url, 'https://amzn.to/abc');
+    assert.equal(event.nativeEvent.url, 'https://amzn.to/abc?tag=test');
+    e.urls.openURL('https://www.amazon.co.jp/dp/B012345678?tag=test');
+    assert.equal(e.calls[3][0], 'https://www.amazon.co.jp/dp/B012345678');
+    e.plugin.onUnload();
+    e.clicks.handleClick(link); assert.equal(e.calls[4][0], link);
+    e.messages.sendMessage('channel', payload); assert.equal(e.calls[5][1], payload);
+});
+
+
+test('fxtwitter replacement is opt-in and only replaces exact X/Twitter hosts', () => {
+    for (const host of ['x.com', 'X.COM', 'www.x.com', 'mobile.twitter.com', 'twitter.com']) {
+        assert.equal(core.cleanUrl(`https://${host}/user/status/123?s=20`), `https://${host}/user/status/123`);
+        assert.equal(core.cleanUrl(`https://${host}/user/status/123?s=20`, true), 'https://fxtwitter.com/user/status/123');
+    }
+    assert.equal(core.cleanUrl('http://x.com:80/a#part?keep=1', true), 'http://fxtwitter.com:80/a#part?keep=1');
+    assert.equal(core.cleanUrl('https://x.com', true), 'https://fxtwitter.com');
+    for (const url of ['https://x.com.evil.test/a?q=1', 'https://x.com@evil.test/a?q=1', 'https://notx.com/a?q=1', 'ftp://x.com/a?q=1', 'https://fxtwitter.com/a', 'https://example.com/x.com?q=1']) {
+        assert.equal(core.cleanUrl(url, true), url);
+    }
+    assert.equal(core.cleanText('[投稿](https://x.com/a?q=1) https://twitter.com/b! https://instagram.com/p/c?q=1 https://amazon.co.jp/dp/a?tag=1', true), '[投稿](https://fxtwitter.com/a) https://fxtwitter.com/b! https://instagram.com/p/c https://amazon.co.jp/dp/a');
+});
+
+test('settings switch defaults off, saves immediately, and persists through reload', () => {
+    const storage = { unrelated: 'keep' };
+    const e = environment({ storage });
+    assert.equal(storage.replaceXWithFxTwitter, false);
+    e.plugin.onLoad();
+    e.urls.openURL('https://x.com/a?q=1');
+    assert.equal(e.calls.pop()[0], 'https://x.com/a');
+    const getSwitch = () => {
+        const tree = e.plugin.settings();
+        return tree.children[0].children.find(child => child.type === 'Switch');
+    };
+    assert.equal(getSwitch().props.value, false);
+    getSwitch().props.onValueChange(true);
+    assert.equal(storage.replaceXWithFxTwitter, true);
+    assert.equal(getSwitch().props.value, true);
+    e.urls.openURL('https://x.com/a?q=1');
+    assert.equal(e.calls.pop()[0], 'https://fxtwitter.com/a');
+    getSwitch().props.onValueChange(false);
+    e.urls.openURL('https://x.com/a?q=1');
+    assert.equal(e.calls.pop()[0], 'https://x.com/a');
+    getSwitch().props.onValueChange(true);
+    e.plugin.onUnload();
+    const reloaded = environment({ storage });
+    assert.equal(reloaded.plugin.settings().children[0].children[1].props.value, true);
+    reloaded.plugin.onLoad();
+    reloaded.urls.openURL('https://twitter.com/a?q=1');
+    assert.equal(reloaded.calls.pop()[0], 'https://fxtwitter.com/a');
+    assert.equal(storage.unrelated, 'keep');
+    reloaded.plugin.onUnload();
+});
+
+test('enabled replacement covers send and all open paths, preserving original objects and unload behavior', () => {
+    const e = environment({ storage: { replaceXWithFxTwitter: true } });
+    e.plugin.onLoad(); e.plugin.onLoad(); assert.equal(e.hooks(), 7);
+    const payload = Object.freeze({ content: '[投稿](https://x.com/a?q=1)', attachments: [] });
+    e.messages.sendMessage('channel', payload);
+    assert.equal(e.calls.pop()[1].content, '[投稿](https://fxtwitter.com/a)');
+    assert.equal(payload.content, '[投稿](https://x.com/a?q=1)');
+    for (const api of [e.urls, e.commonUrls, e.native]) {
+        api.openURL('https://x.com/a?q=1');
+        assert.equal(e.calls.pop()[0], 'https://fxtwitter.com/a');
+    }
+    const link = Object.freeze({ href: 'https://twitter.com/a?q=1', trusted: true });
+    e.clicks.handleClick(link);
+    assert.equal(e.calls.pop()[0].href, 'https://fxtwitter.com/a');
+    assert.equal(link.href, 'https://twitter.com/a?q=1');
+    for (const name of ['handleMessagesTapLink', 'handleMessagesTapURLLink']) {
+        const event = Object.freeze({ nativeEvent: Object.freeze({ url: 'https://x.com/a?q=1' }) });
+        e.taps[name](event);
+        assert.equal(e.calls.pop()[0].nativeEvent.url, 'https://fxtwitter.com/a');
+        assert.equal(event.nativeEvent.url, 'https://x.com/a?q=1');
+    }
+    e.plugin.onUnload(); assert.equal(e.hooks(), 0);
+    e.urls.openURL('https://x.com/a?q=1'); assert.equal(e.calls.pop()[0], 'https://x.com/a?q=1');
+    e.plugin.onLoad();
+    e.urls.openURL('https://x.com/a?q=1'); assert.equal(e.calls.pop()[0], 'https://fxtwitter.com/a');
     e.plugin.onUnload();
 });

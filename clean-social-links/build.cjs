@@ -7,7 +7,7 @@ const bundle = '(function(){var module={exports:{}};\n' + read('src/core.cjs') +
 new Function('vendetta', 'return ' + bundle);
 fs.writeFileSync(path.join(__dirname, 'index.js'), bundle);
 fs.writeFileSync(path.join(__dirname, 'manifest.json'), JSON.stringify({
-    name: 'Clean Social Links', description: 'Instagram・X のリンクを開くとき／送信するときに ? 以降を自動削除',
+    name: 'Clean Social Links', description: 'Instagram・X・Amazon のリンクを開くとき／送信するときに ? 以降を自動削除。Xのfxtwitter置換は任意（初期OFF）',
     authors: [{ name: 'porari' }], main: 'index.js',
     hash: crypto.createHash('sha256').update(bundle).digest('hex')
 }, null, 2) + '\n');
