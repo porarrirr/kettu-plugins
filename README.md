@@ -7,7 +7,7 @@ Kettu / Vendetta 向けの、ことばとリンクを扱うプラグイン。
 | | 機能 | ドキュメント |
 | --- | --- | --- |
 | **ことば Translator** | メッセージの自動翻訳、API 切替、翻訳キャッシュ | [導入・使い方](kotoba-translator/README.md) |
-| **Clean Social Links** | Instagram・X・Amazon のリンクからクエリを削除、任意でXをfxtwitterへ置換 | [導入・使い方](clean-social-links/README.md) |
+| **Clean Social Links** | Instagram・X・Amazon のリンクとAliExpressの商品リンクからクエリを削除（サイト別ON/OFF）、任意でXをfxtwitterへ置換 | [導入・使い方](clean-social-links/README.md) |
 
 それぞれ単独で動作します。実行時の npm パッケージ依存はありません。
 
@@ -50,7 +50,7 @@ GitHub Pages で `main` ブランチのルートから配信しています。�
 
 Translator は翻訳対象を設定した外部 API へ送信します。API キー・設定・原文と訳文のキャッシュ・統計は端末のプラグインストレージに保存されます。送信先と削除方法は[詳しい説明](kotoba-translator/README.md)を確認してください。
 
-Clean Social Links はプラグイン自身による外部通信やリンク本文の保存を行いません。fxtwitter 置換設定のオン／オフだけを端末に保存します。API キー、端末設定、ログ、バックアップをリポジトリに含めないでください。
+Clean Social Links はプラグイン自身による外部通信やリンク本文の保存を行いません。各サイトの清掃設定とfxtwitter置換のオン／オフを端末に保存します。API キー、端末設定、ログ、バックアップをリポジトリに含めないでください。
 
 ## ライセンス
 

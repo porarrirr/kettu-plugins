@@ -1,11 +1,11 @@
 {
   "name": "Clean Social Links",
-  "description": "Instagram・X・Amazon のリンクを開くとき／送信するときに ? 以降を自動削除。Xのfxtwitter置換は任意（初期OFF）",
+  "description": "Instagram・X・AmazonのリンクとAliExpressの商品リンクの ? 以降をサイト別にON/OFFして削除。Xのfxtwitter置換は任意（初期OFF）",
   "authors": [
     {
       "name": "porari"
     }
   ],
   "main": "index.js",
-  "hash": "aa7e6b2c9cb19599132803a19788a23f46ef19436169524f221a4dd20db5b765"
+  "hash": "48971134bc6a4008f2587fdb2f8f4b66d26e69236bd1d462a6ec4fad26432db1"
 }

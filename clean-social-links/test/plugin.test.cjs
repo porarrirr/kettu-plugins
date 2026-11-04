@@ -205,8 +205,7 @@ test('settings switch defaults off, saves immediately, and persists through relo
     e.urls.openURL('https://x.com/a?q=1');
     assert.equal(e.calls.pop()[0], 'https://x.com/a');
     const getSwitch = () => {
-        const tree = e.plugin.settings();
-        return tree.children[0].children.find(child => child.type === 'Switch');
+        return settingSwitch(e, 'Xをfxtwitterに置き換える');
     };
     assert.equal(getSwitch().props.value, false);
     getSwitch().props.onValueChange(true);
@@ -220,7 +219,7 @@ test('settings switch defaults off, saves immediately, and persists through relo
     getSwitch().props.onValueChange(true);
     e.plugin.onUnload();
     const reloaded = environment({ storage });
-    assert.equal(reloaded.plugin.settings().children[0].children[1].props.value, true);
+    assert.equal(settingSwitch(reloaded, 'Xをfxtwitterに置き換える').props.value, true);
     reloaded.plugin.onLoad();
     reloaded.urls.openURL('https://twitter.com/a?q=1');
     assert.equal(reloaded.calls.pop()[0], 'https://fxtwitter.com/a');
@@ -252,6 +251,156 @@ test('enabled replacement covers send and all open paths, preserving original ob
     e.plugin.onUnload(); assert.equal(e.hooks(), 0);
     e.urls.openURL('https://x.com/a?q=1'); assert.equal(e.calls.pop()[0], 'https://x.com/a?q=1');
     e.plugin.onLoad();
+    e.urls.openURL('https://x.com/a?q=1'); assert.equal(e.calls.pop()[0], 'https://fxtwitter.com/a');
+    e.plugin.onUnload();
+});
+
+
+test('AliExpress item URLs remove query strings on verified domains and preserve host/path', () => {
+    for (const host of ['aliexpress.com', 'www.aliexpress.com', 'ja.aliexpress.com', 'm.aliexpress.com', 'www.aliexpress.us', 'aliexpress.ru', 'ALIEXPRESS.COM']) {
+        const url = `https://${host}/item/1005001234567890.html?spm=test&aff_fcid=example&sku_id=123#part`;
+        assert.equal(core.cleanUrl(url), `https://${host}/item/1005001234567890.html`);
+        assert.equal(core.cleanUrl(url, true), `https://${host}/item/1005001234567890.html`);
+    }
+    assert.equal(core.cleanUrl('http://www.aliexpress.com:80/item/123.html/?spm=test'), 'http://www.aliexpress.com:80/item/123.html/');
+    assert.equal(core.cleanText('商品 [Ali](https://ja.aliexpress.com/item/123.html?spm=test)。 <https://www.aliexpress.us/item/456.html?aff_trace_key=example> https://x.com/a?q=1', true), '商品 [Ali](https://ja.aliexpress.com/item/123.html)。 <https://www.aliexpress.us/item/456.html> https://fxtwitter.com/a');
+});
+
+test('AliExpress short links, redirects, functional pages, fragments and lookalikes stay intact', () => {
+    const urls = [
+        'https://a.aliexpress.com/_example?spm=test',
+        'https://s.click.aliexpress.com/e/_example?aff_fcid=test',
+        'https://s.click.aliexpress.com/deep_link.htm?dl_target_url=https%3A%2F%2Fwww.aliexpress.com%2Fitem%2F123.html&aff_short_key=example',
+        'https://a.aliexpress.com/item/123.html?keep=1',
+        'https://s.click.aliexpress.com/item/123.html?keep=1',
+        'https://www.aliexpress.com/wholesale?SearchText=usb&spm=test',
+        'https://www.aliexpress.com/w/wholesale-usb.html?page=2&spm=test',
+        'https://www.aliexpress.com/p/landing/index.html?productIds=123',
+        'https://www.aliexpress.com/item/123.html/_____tmd_____/punish?x5secdata=test',
+        'https://www.aliexpress.com/?productId=123',
+        'https://www.aliexpress.com/item/123.html#part?keep=1',
+        'https://www.aliexpress.com/item/123.html',
+        'https://aliexpress.com.evil.test/item/123.html?spm=test',
+        'https://aliexpress.com@evil.test/item/123.html?spm=test',
+        'https://notaliexpress.com/item/123.html?spm=test',
+        'https://aliexpress.com:invalid/item/123.html?spm=test',
+        'https://aliexpress.example/item/123.html?spm=test',
+        'ftp://aliexpress.com/item/123.html?spm=test'
+    ];
+    for (const url of urls) {
+        assert.equal(core.cleanUrl(url), url);
+        assert.equal(core.cleanUrl(url, true), url);
+        assert.equal(core.cleanText(`[link](${url})`), `[link](${url})`);
+    }
+});
+
+test('AliExpress cleaning covers send and all link paths without changing original payloads', () => {
+    const e = environment(); e.plugin.onLoad();
+    const url = 'https://ja.aliexpress.com/item/123.html?spm=test&aff_fcid=example';
+    const cleaned = 'https://ja.aliexpress.com/item/123.html';
+    const short = 'https://a.aliexpress.com/_example?keep=1';
+    const payload = Object.freeze({ content: `${url} ${short}`, attachments: [] });
+    e.messages.sendMessage('channel', payload);
+    assert.equal(e.calls.pop()[1].content, `${cleaned} ${short}`);
+    assert.equal(payload.content, `${url} ${short}`);
+    for (const api of [e.urls, e.commonUrls, e.native]) {
+        api.openURL(url); assert.equal(e.calls.pop()[0], cleaned);
+        api.openURL(short); assert.equal(e.calls.pop()[0], short);
+    }
+    const link = Object.freeze({ href: url, trusted: true });
+    e.clicks.handleClick(link); assert.equal(e.calls.pop()[0].href, cleaned);
+    assert.equal(link.href, url);
+    for (const name of ['handleMessagesTapLink', 'handleMessagesTapURLLink']) {
+        const event = Object.freeze({ nativeEvent: Object.freeze({ url }) });
+        e.taps[name](event); assert.equal(e.calls.pop()[0].nativeEvent.url, cleaned);
+        assert.equal(event.nativeEvent.url, url);
+    }
+    e.plugin.onUnload();
+    e.urls.openURL(url); assert.equal(e.calls.pop()[0], url);
+    e.plugin.onLoad();
+    e.urls.openURL(url); assert.equal(e.calls.pop()[0], cleaned);
+    e.plugin.onUnload();
+});
+
+function settingSwitch(e, label) {
+    return e.plugin.settings().children.flatMap(child => child.children || []).find(child => child.type === 'Switch' && child.props.accessibilityLabel === label);
+}
+
+
+const siteCases = [
+    ['cleanXLinks', 'Xのリンクを清掃', 'https://mobile.twitter.com/a?q=1', 'https://fxtwitter.com/a'],
+    ['cleanAmazonLinks', 'Amazonのリンクを清掃', 'https://amazon.co.jp/dp/B012345678?tag=test', 'https://amazon.co.jp/dp/B012345678'],
+    ['cleanInstagramLinks', 'Instagramのリンクを清掃', 'https://instagram.com/p/a?igsh=test', 'https://instagram.com/p/a'],
+    ['cleanAliExpressLinks', 'AliExpressの商品リンクを清掃', 'https://ja.aliexpress.com/item/123.html?spm=test', 'https://ja.aliexpress.com/item/123.html']
+];
+
+test('all 16 site toggle combinations apply independently on every send/open path', () => {
+    for (let mask = 0; mask < 16; mask++) {
+        const storage = { replaceXWithFxTwitter: true };
+        siteCases.forEach(([key], index) => { storage[key] = Boolean(mask & (1 << index)); });
+        const e = environment({ storage }); e.plugin.onLoad();
+        const source = siteCases.map(row => row[2]).join(' ');
+        const expected = siteCases.map(([key, , url, clean]) => storage[key] ? clean : url).join(' ');
+        const payload = Object.freeze({ content: source, attachments: [] });
+        e.messages.sendMessage('channel', payload);
+        assert.equal(e.calls.pop()[1].content, expected);
+        assert.equal(payload.content, source);
+        for (const [key, , url, clean] of siteCases) {
+            const result = storage[key] ? clean : url;
+            for (const api of [e.urls, e.commonUrls, e.native]) {
+                api.openURL(url); assert.equal(e.calls.pop()[0], result);
+            }
+            const link = Object.freeze({ href: url });
+            e.clicks.handleClick(link); assert.equal(e.calls.pop()[0].href, result);
+            assert.equal(link.href, url);
+            for (const name of ['handleMessagesTapLink', 'handleMessagesTapURLLink']) {
+                const event = Object.freeze({ nativeEvent: Object.freeze({ url }) });
+                e.taps[name](event); assert.equal(e.calls.pop()[0].nativeEvent.url, result);
+                assert.equal(event.nativeEvent.url, url);
+            }
+        }
+        e.plugin.onUnload(); assert.equal(e.hooks(), 0);
+    }
+});
+
+test('each site switch defaults on, changes immediately and preserves saved values through reload', () => {
+    const storage = { replaceXWithFxTwitter: true, unrelated: 'keep' };
+    const e = environment({ storage }); e.plugin.onLoad();
+    for (const [key, label, url, clean] of siteCases) {
+        assert.equal(storage[key], true);
+        assert.equal(settingSwitch(e, label).props.value, true);
+        settingSwitch(e, label).props.onValueChange(false);
+        assert.equal(storage[key], false);
+        assert.equal(settingSwitch(e, label).props.value, false);
+        e.urls.openURL(url); assert.equal(e.calls.pop()[0], url);
+        settingSwitch(e, label).props.onValueChange(true);
+        e.urls.openURL(url); assert.equal(e.calls.pop()[0], clean);
+        settingSwitch(e, label).props.onValueChange(false);
+    }
+    assert.equal(storage.replaceXWithFxTwitter, true);
+    e.plugin.onUnload();
+    const reloaded = environment({ storage }); reloaded.plugin.onLoad();
+    for (const [key, label, url] of siteCases) {
+        assert.equal(storage[key], false);
+        assert.equal(settingSwitch(reloaded, label).props.value, false);
+        reloaded.urls.openURL(url); assert.equal(reloaded.calls.pop()[0], url);
+    }
+    assert.equal(storage.unrelated, 'keep');
+    reloaded.plugin.onUnload();
+});
+
+test('disabling X suspends fxtwitter replacement and disables its control without losing the preference', () => {
+    const storage = { replaceXWithFxTwitter: true };
+    const e = environment({ storage }); e.plugin.onLoad();
+    settingSwitch(e, 'Xのリンクを清掃').props.onValueChange(false);
+    const fx = settingSwitch(e, 'Xをfxtwitterに置き換える');
+    assert.equal(fx.props.disabled, true);
+    assert.equal(fx.props.accessibilityState.disabled, true);
+    fx.props.onValueChange(false);
+    assert.equal(storage.replaceXWithFxTwitter, true);
+    e.urls.openURL('https://x.com/a?q=1'); assert.equal(e.calls.pop()[0], 'https://x.com/a?q=1');
+    settingSwitch(e, 'Xのリンクを清掃').props.onValueChange(true);
+    assert.equal(settingSwitch(e, 'Xをfxtwitterに置き換える').props.disabled, false);
     e.urls.openURL('https://x.com/a?q=1'); assert.equal(e.calls.pop()[0], 'https://fxtwitter.com/a');
     e.plugin.onUnload();
 });

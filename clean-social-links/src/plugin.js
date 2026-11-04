@@ -3,37 +3,60 @@ function createPlugin(vendetta, core) {
     var unpatches = [];
     var hooked = [];
     var store = vendetta && vendetta.plugin && vendetta.plugin.storage || {};
-    if (store.replaceXWithFxTwitter == null) store.replaceXWithFxTwitter = false;
+    var defaults = { cleanXLinks: true, cleanAmazonLinks: true, cleanInstagramLinks: true, cleanAliExpressLinks: true, replaceXWithFxTwitter: false };
+    var settingKeys = Object.keys(defaults);
+    for (var i = 0; i < settingKeys.length; i++) {
+        var key = settingKeys[i];
+        if (store[key] == null) store[key] = defaults[key];
+    }
+    function settingsValues() {
+        var values = {};
+        for (var i = 0; i < settingKeys.length; i++) {
+            var key = settingKeys[i];
+            values[key] = defaults[key] ? store[key] !== false : store[key] === true;
+        }
+        return values;
+    }
     function cleanUrl(value) {
-        return core.cleanUrl(value, store.replaceXWithFxTwitter === true);
+        return core.cleanUrl(value, store.replaceXWithFxTwitter === true, store);
     }
     function cleanText(value) {
-        return core.cleanText(value, store.replaceXWithFxTwitter === true);
+        return core.cleanText(value, store.replaceXWithFxTwitter === true, store);
     }
     function Settings() {
         var common = vendetta && vendetta.metro && vendetta.metro.common;
         var React = common && common.React;
         var RN = common && common.ReactNative;
         if (!React || typeof React.createElement !== "function" || typeof React.useState !== "function" || !RN || !RN.View || !RN.Text || !RN.Switch || !RN.ScrollView) return null;
-        var state = React.useState(store.replaceXWithFxTwitter === true);
+        var state = React.useState(settingsValues());
         var dark = typeof RN.useColorScheme === "function" ? RN.useColorScheme() !== "light" : true;
         var color = dark ? "#f2f3f5" : "#172033";
         var h = React.createElement;
-        return h(RN.ScrollView, { style: { flex: 1, backgroundColor: dark ? "#141722" : "#f1f4fa" }, contentContainerStyle: { padding: 18 } },
-            h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginBottom: 12 } },
-                h(RN.Text, { style: { color: color, fontSize: 16, flex: 1, marginRight: 12 } }, "Xをfxtwitterに置き換える"),
+        function toggle(key, title, disabled) {
+            return h(RN.View, { style: { flexDirection: "row", alignItems: "center", marginBottom: 12 } },
+                h(RN.Text, { style: { color: color, fontSize: 16, flex: 1, marginRight: 12 } }, title),
                 h(RN.Switch, {
-                    value: state[0], accessibilityLabel: "Xをfxtwitterに置き換える",
+                    value: state[0][key], disabled: disabled === true, accessibilityLabel: title,
+                    accessibilityState: { disabled: disabled === true },
                     onValueChange: function (value) {
-                        store.replaceXWithFxTwitter = value === true;
-                        state[1](value === true);
+                        if (disabled) return;
+                        store[key] = value === true;
+                        state[1](settingsValues());
                     }
-                })),
+                }));
+        }
+        return h(RN.ScrollView, { style: { flex: 1, backgroundColor: dark ? "#141722" : "#f1f4fa" }, contentContainerStyle: { padding: 18 } },
+            toggle("cleanXLinks", "Xのリンクを清掃"),
+            toggle("cleanAmazonLinks", "Amazonのリンクを清掃"),
+            toggle("cleanInstagramLinks", "Instagramのリンクを清掃"),
+            toggle("cleanAliExpressLinks", "AliExpressの商品リンクを清掃"),
+            h(RN.Text, { style: { color: color, fontSize: 14, lineHeight: 21, marginBottom: 18 } },
+                "オンのサイトだけ、送信時とリンクを開く直前に「?」以降を削除します。各サイトは初期オンです。変更はすぐに保存・反映されます。AliExpressは商品ページのみが対象です。"),
+            toggle("replaceXWithFxTwitter", "Xをfxtwitterに置き換える", !state[0].cleanXLinks),
             h(RN.Text, { style: { color: color, fontSize: 14, lineHeight: 21 } },
-                "初期設定はオフです。オンにすると送信時とリンクを開く直前に、x.com・twitter.comのリンクをfxtwitter.comへ置き換えます。変更はすぐに保存・反映されます。"),
-            h(RN.Text, { style: { color: color, fontSize: 14, lineHeight: 21, marginTop: 12 } },
-                "リンクの「?」以降の削除は、この設定がオフでも動作します。"));
+                "fxtwitterへの置換は初期オフです。Xのリンク清掃がオンのときだけ利用できます。Xの清掃をオフにすると、置換も停止します。"));
     }
+
     function find() {
         try { return vendetta.metro.findByProps.apply(vendetta.metro, arguments); }
         catch (_) { return null; }
